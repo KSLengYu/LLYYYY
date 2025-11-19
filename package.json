@@ -1,0 +1,23 @@
+{
+  "name": "my-board",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "20.x"
+  },
+  "scripts": {
+    "dev": "vercel dev",
+    "start": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.30.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.0",
+    "nodemailer": "^6.9.3"
+  },
+  "devDependencies": {
+    "vercel": "^35.0.0"
+  }
+}
