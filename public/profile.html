@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>个人主页</title>
+<style>
+  body{font-family:Arial;background:linear-gradient(180deg,#071026,#001021);color:#e6eef6;margin:0;padding:20px}
+  .wrap{max-width:900px;margin:24px auto;padding:18px}
+  .card{background:rgba(255,255,255,0.02);padding:18px;border-radius:12px}
+  .avatar{width:80px;height:80px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,0.03)}
+  input{width:100%;padding:8px;margin-top:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+  .btn{background:linear-gradient(90deg,#06b6d4,#8b5cf6);color:#022;padding:8px 12px;border-radius:8px;border:none;cursor:pointer}
+  .muted{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:8px;border-radius:8px;color:#9ca3af;cursor:pointer}
+  .small{color:#9ca3af;font-size:13px}
+  .row{display:flex;gap:10px;align-items:center}
+  .section{margin-top:16px}
+  .modal-back{position:fixed;inset:0;background:rgba(0,0,0,0.5);display:none;align-items:center;justify-content:center}
+  .modal{background:rgba(255,255,255,0.02);padding:16px;border-radius:12px}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div style="display:flex;gap:16px;align-items:center">
+        <img id="profileAvatar" class="avatar" src="/assets/default-avatar.png" alt="头像"/>
+        <div style="flex:1">
+          <h2 id="profileName">用户</h2>
+          <div id="profileEmail" class="small"></div>
+          <div style="margin-top:8px" class="row">
+            <button id="logoutBtn" class="btn">退出登录</button>
+            <button id="bindQBtn" class="muted" style="display:none">绑定 QQ</button>
+            <button id="unbindQBtn" class="muted" style="display:none">解绑 QQ</button>
+            <button id="changePwdBtn" class="muted">修改密码</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>资料设置</h3>
+        <label class="small">显示名称</label>
+        <input id="displayName" placeholder="留空则使用绑定的 QQ 名或邮箱前缀"/>
+        <div style="margin-top:8px" class="row">
+          <button id="saveProfileBtn" class="btn">保存资料</button>
+          <span id="saveProfileMsg" class="small" style="margin-left:8px"></span>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>邮箱绑定</h3>
+        <input id="bindEmail" placeholder="用于验证与找回密码" />
+        <div class="row" style="margin-top:8px">
+          <button id="sendBindOtpBtn" class="btn">发送验证码</button>
+          <button id="confirmBindEmailBtn" class="muted">完成绑定（在邮箱拿验证码）</button>
+          <span id="bindMsg" class="small" style="margin-left:8px"></span>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>我的留言</h3>
+        <div id="myMessages" class="small">加载中...</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modalBack" class="modal-back"><div class="modal" id="modalBox"></div></div>
+
+<script>
+function esc(s){ return (s||'').toString().replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+async function api(path, opts={}) { return fetch('/api/v1/' + path, Object.assign({ credentials:'include' }, opts)); }
+
+async function loadProfile(){
+  const res = await api('me', { method:'GET' });
+  if (!res.ok){ alert('未登录或会话失效'); location.href='/login.html'; return; }
+  const u = await res.json();
+  const name = u.qq_name || u.display_name || (u.email? u.email.split('@')[0] : '用户');
+  document.getElementById('profileAvatar').src = u.qq_avatar || '/assets/default-avatar.png';
+  document.getElementById('profileName').textContent = name;
+  document.getElementById('profileEmail').textContent = u.email || '';
+  document.getElementById('displayName').value = u.display_name || '';
+  document.getElementById('bindEmail').value = u.email || '';
+  document.getElementById('unbindQBtn').style.display = u.qq_id ? 'inline-block' : 'none';
+  document.getElementById('bindQBtn').style.display = u.qq_id ? 'none' : 'inline-block';
+  loadMyMessages(u.id);
+}
+
+async function loadMyMessages(userId){
+  const r = await fetch('/api/v1/messages?limit=200');
+  if (!r.ok){ document.getElementById('myMessages').textContent = '加载失败'; return; }
+  const all = await r.json();
+  const mine = all.filter(m=>m.user_id === userId);
+  const box = document.getElementById('myMessages'); box.innerHTML='';
+  if (mine.length===0) { box.textContent='你还没有发布过留言'; return; }
+  mine.forEach(m=>{
+    const d = document.createElement('div'); d.style.padding='8px'; d.style.borderBottom='1px solid rgba(255,255,255,0.03)';
+    d.innerHTML = `<div style="font-size:13px;color:#9ca3af">${new Date(m.created_at).toLocaleString()}</div><div style="margin-top:6px">${esc(m.content)}</div>`;
+    box.appendChild(d);
+  });
+}
+
+document.getElementById('saveProfileBtn').addEventListener('click', async ()=>{
+  const display_name = document.getElementById('displayName').value.trim();
+  const res = await api('update-profile', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ display_name })});
+  const j = await res.json(); document.getElementById('saveProfileMsg').textContent = j.ok ? '已保存' : (j.error || '保存失败'); if (j.ok) loadProfile();
+});
+
+// bind QQ (shows prompt for QQ id then calls API)
+document.getElementById('bindQBtn').addEventListener('click', async ()=>{
+  const qq = prompt('输入要绑定的 QQ 号码');
+  if (!qq) return;
+  const res = await api('bind-qq', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ qq })});
+  if (!res.ok) { const j = await res.json().catch(()=>({})); return alert(j.error || '绑定失败'); }
+  alert('绑定成功'); loadProfile();
+});
+
+document.getElementById('unbindQBtn').addEventListener('click', async ()=>{
+  if (!confirm('确认解绑 QQ？')) return;
+  const res = await api('unbind-qq', { method:'POST' });
+  if (!res.ok) { const j=await res.json().catch(()=>({})); return alert(j.error||'解绑失败'); }
+  alert('解绑成功'); loadProfile();
+});
+
+document.getElementById('sendBindOtpBtn').addEventListener('click', async ()=>{
+  const email = document.getElementById('bindEmail').value.trim(); if (!email) return alert('请输入邮箱');
+  const res = await fetch('/api/v1/send-otp', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ email })});
+  if (!res.ok) return alert('发送失败'); document.getElementById('bindMsg').textContent='验证码已发送，请检查邮箱';
+});
+
+document.getElementById('confirmBindEmailBtn').addEventListener('click', async ()=>{
+  const email = document.getElementById('bindEmail').value.trim(); if (!email) return alert('请输入邮箱');
+  const otp = prompt('输入你收到的验证码（6位）'); if (!otp) return;
+  const v = await api('verify-otp', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ email, otp })});
+  if (!v.ok) return alert('验证失败');
+  const ures = await api('update-profile', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ email })});
+  const uj = await ures.json();
+  if (uj.ok) { alert('绑定成功'); loadProfile(); } else alert('绑定失败');
+});
+
+// change password modal (simple)
+document.getElementById('changePwdBtn').addEventListener('click', async ()=>{
+  const oldP = prompt('输入旧密码（若无请留空）');
+  const newP = prompt('输入新密码（仅英文与数字，至少6位）');
+  if (!newP) return;
+  if (!/^[A-Za-z0-9]{6,}$/.test(newP)) return alert('密码需至少6位且仅包含英文和数字');
+  const res = await api('set-password', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ oldPassword: oldP || '', newPassword: newP })});
+  const j = await res.json();
+  if (!res.ok) return alert(j.error || '修改失败');
+  alert('密码已修改');
+});
+
+document.getElementById('logoutBtn').addEventListener('click', async ()=> { await api('logout', { method:'POST' }); location.href='/'; });
+
+loadProfile();
+</script>
+</body>
+</html>

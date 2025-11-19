@@ -1,1 +1,316 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>留言板</title>
+<style>
+  :root{
+    --bg:#020617;
+    --panel:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.06));
+    --accent1:#06b6d4;
+    --accent2:#8b5cf6;
+    --muted:#9ca3af;
+    --text:#e6eef6;
+    font-family:Inter, "Segoe UI", Roboto, Arial;
+  }
+  html,body{height:100%;margin:0;background:linear-gradient(180deg,var(--bg),#001021);color:var(--text);-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1100px;margin:28px auto;padding:28px}
+  header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+  .logo{font-weight:800;font-size:20px;letter-spacing:0.6px}
+  .userbox{display:flex;gap:12px;align-items:center}
+  .avatar{width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,0.03)}
+  .card{background:var(--panel);padding:18px;border-radius:14px;box-shadow:0 10px 40px rgba(2,6,23,0.6)}
+  .composer textarea{width:100%;min-height:100px;padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:var(--text);font-size:14px}
+  .btn{background:linear-gradient(90deg,var(--accent1),var(--accent2));color:#022;padding:10px 14px;border-radius:12px;border:none;cursor:pointer;box-shadow:0 6px 18px rgba(11,78,96,0.12);transition:transform .12s}
+  .btn:active{transform:translateY(1px) scale(.995)}
+  .muted{background:transparent;border:1px solid rgba(255,255,255,0.04);padding:8px;border-radius:8px;color:var(--muted);cursor:pointer}
+  .row{display:flex;gap:10px;align-items:center}
+  .msg{display:flex;gap:14px;padding:14px;border-radius:12px;background:rgba(255,255,255,0.01);margin-bottom:12px;align-items:flex-start}
+  .name{font-weight:700}
+  .qqsmall{opacity:0.7;font-size:12px;margin-left:8px}
+  .meta{font-size:12px;color:var(--muted);margin-top:6px}
+  .reply-box{margin-left:64px;margin-top:10px}
+  .small{font-size:13px;color:var(--muted)}
+  .info-pill{background:rgba(255,255,255,0.02);padding:6px 10px;border-radius:999px;font-size:12px;color:var(--muted)}
+  .hint{font-size:13px;color:var(--muted);margin-top:8px}
+  /* modal */
+  .modal-back{position:fixed;inset:0;background:rgba(0,0,0,0.5);display:none;align-items:center;justify-content:center;z-index:90}
+  .modal{background:var(--panel);padding:18px;border-radius:12px;max-width:420px;width:94%}
+  .progress{height:10px;border-radius:99px;background:rgba(255,255,255,0.06);overflow:hidden;margin-top:12px}
+  .progress-bar{height:100%;width:0%;background:linear-gradient(90deg,#8b5cf6,#06b6d4);transition:width .6s cubic-bezier(.2,.9,.2,1)}
+  .header-top{display:flex;gap:12px;align-items:center}
+  .faded-small{opacity:0.6;font-size:12px;margin-left:8px}
+  @media (max-width:760px){
+    .reply-box{margin-left:0}
+    .layout{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="logo">科技 · 留言板 <span class="faded-small">#Power by LengYu</span></div>
+      <div class="userbox">
+        <div id="userArea">
+          <a id="loginBtn" class="btn" href="/login.html">登录 / 注册</a>
+        </div>
+      </div>
+    </header>
 
+    <div class="layout" style="display:grid;grid-template-columns:1fr 340px;gap:18px">
+      <main>
+        <div class="card composer">
+          <textarea id="content" placeholder="写下你的留言..."></textarea>
+          <div class="row" style="margin-top:12px">
+            <button id="postBtn" class="btn">发表</button>
+            <button id="refreshBtn" class="muted">刷新</button>
+            <div style="flex:1"></div>
+            <div id="userStatus" class="small">未登录</div>
+          </div>
+          <div class="hint">支持回复、显示设备型号与网络类型（如 WiFi / 5G / 4G）</div>
+        </div>
+
+        <div id="messages" style="margin-top:12px"></div>
+      </main>
+
+      <aside class="card">
+        <h4 style="margin:0">说明 <small style="opacity:0.6;font-size:12px;margin-left:8px">#Power by LengYu</small></h4>
+        <p class="small" id="readmeBox">加载更新说明...</p>
+        <div style="margin-top:8px">
+          <a id="adminLink" href="/admin.html" class="small" style="color:var(--muted);display:none">后台管理</a>
+        </div>
+        <div style="margin-top:12px">
+          <button id="guestBtn" class="muted">游客模式（限 5 条/天）</button>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- modal -->
+  <div id="modalBack" class="modal-back">
+    <div class="modal" id="modalBox">
+      <div id="modalTitle" style="font-weight:700">提示</div>
+      <div id="modalContent" style="margin-top:8px">...</div>
+      <div class="progress"><div id="progressBar" class="progress-bar"></div></div>
+      <div style="text-align:right;margin-top:12px"><button id="modalClose" class="btn">关闭</button></div>
+    </div>
+  </div>
+
+<script>
+/* ===== utilities ===== */
+function esc(s){ return (s||'').toString().replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+async function api(path, opts={}) {
+  const res = await fetch('/api/v1/' + path, Object.assign({ credentials:'include' }, opts));
+  return res;
+}
+
+/* ===== device & network helpers ===== */
+function detectDeviceModel() {
+  const ua = navigator.userAgent || '';
+  // Iphone
+  const ip = ua.match(/iPhone\s?([0-9]{1,2})/i);
+  if (ip) return `iPhone ${ip[1]}`;
+  // vivo / iQOO / Xiaomi
+  const vivo = ua.match(/vivo[\s/-]*([A-Za-z0-9\- ]+)/i);
+  if (vivo) return `vivo ${vivo[1].trim()}`;
+  const iq = ua.match(/iQOO[\s/-]*([A-Za-z0-9\- ]+)/i);
+  if (iq) return `iQOO ${iq[1].trim()}`;
+  const x = ua.match(/(Xiaomi|Mi|Redmi)[\s\/]*([A-Za-z0-9\- ]+)/i);
+  if (x) return `${x[1]} ${x[2]||''}`.trim();
+  const samsung = ua.match(/SM-[A-Z0-9-]+/i);
+  if (samsung) return samsung[0];
+  // fallback: short UA
+  return ua.split(')')[0].slice(0,40) || 'Unknown device';
+}
+function detectNetwork() {
+  const nav = navigator;
+  const c = nav.connection || nav.mozConnection || nav.webkitConnection;
+  if (!c) return { type: 'unknown', label: '' };
+  // type may be "wifi" or "cellular" and effectiveType like '4g'
+  if (c.type === 'wifi' || (c.type && c.type.toLowerCase().includes('wifi'))) {
+    // we cannot reliably detect wifi gen (WiFi6/7) from browser; show WiFi
+    return { type:'wifi', label:'WiFi' };
+  }
+  const eff = (c.effectiveType || '').toLowerCase();
+  if (eff.includes('4g')) return { type:'cell', label:'4G/5G (fast)' };
+  if (eff.includes('3g')) return { type:'cell', label:'3G' };
+  if (eff.includes('2g')) return { type:'cell', label:'2G' };
+  // try downlink to guess
+  if (c.downlink && c.downlink > 10) return { type:'cell', label:'5G/4G' };
+  return { type:'unknown', label: 'unknown' };
+}
+
+/* 新的 modal + 进度条（先慢推进，然后 1s 冲满） */
+function showModal(title, content, autoCloseMs) {
+  const back = document.getElementById('modalBack');
+  const titleEl = document.getElementById('modalTitle');
+  const contentEl = document.getElementById('modalContent') || document.getElementById('modalMsg'); // support different pages
+  const bar = document.getElementById('progressBar');
+  if (!back || !bar) {
+    alert(title + '\n\n' + (content || '')); // fallback
+    if (autoCloseMs && typeof autoCloseMs === 'function') autoCloseMs();
+    return;
+  }
+  titleEl.textContent = title;
+  contentEl.innerHTML = content || '';
+  back.style.display = 'flex';
+
+  // reset immediately (no transition)
+  bar.style.transition = 'none';
+  bar.style.width = '4%';
+
+  // step1: slow fill to a mid value (e.g. 60%) over 800ms
+  setTimeout(()=> {
+    bar.style.transition = 'width 800ms cubic-bezier(.2,.9,.2,1)';
+    bar.style.width = '60%';
+  }, 80);
+
+  // step2: after a short pause, do final fill to 100% with 1s transition
+  setTimeout(()=> {
+    bar.style.transition = 'width 1000ms cubic-bezier(.2,.9,.2,1)';
+    bar.style.width = '100%';
+  }, 950);
+
+  // auto close and callback
+  if (autoCloseMs) {
+    setTimeout(()=> {
+      back.style.display = 'none';
+      if (typeof autoCloseMs === 'function') autoCloseMs();
+    }, autoCloseMs + 1200); // keep a bit after animation
+  }
+}
+
+/* ===== auth / UI ===== */
+let CURRENT_USER_ID = null;
+let IS_ADMIN = false;
+
+async function checkAuth() {
+  try {
+    const res = await api('me', { method:'GET' });
+    if (!res.ok) { document.getElementById('userStatus').textContent='未登录'; return; }
+    const u = await res.json();
+    CURRENT_USER_ID = u.id;
+    IS_ADMIN = u.role === 'admin';
+    document.getElementById('userStatus').textContent = u.qq_name || u.display_name || (u.email? u.email.split('@')[0] : '已登录');
+    document.getElementById('userArea').innerHTML = `<a href="/profile.html" style="display:flex;gap:8px;align-items:center;text-decoration:none;color:inherit"><img src="${u.qq_avatar||'/assets/default-avatar.png'}" class="avatar" onerror="this.src='/assets/default-avatar.png'"/><span style="margin-left:8px">${u.qq_name || u.display_name || (u.email?u.email.split('@')[0]:'用户')}</span></a>`;
+    if (IS_ADMIN) document.getElementById('adminLink').style.display='block';
+  } catch (e) { console.error(e); }
+}
+
+/* ===== messages & rendering ===== */
+async function loadMessages() {
+  const el = document.getElementById('messages');
+  el.innerHTML = '<div class="small">加载中...</div>';
+  try {
+    const res = await api('messages?limit=200', { method:'GET' });
+    if (!res.ok) throw new Error('load failed');
+    const data = await res.json();
+    el.innerHTML = '';
+    if (!data || data.length === 0) { el.innerHTML = '<div class="small">暂无留言</div>'; return; }
+    data.forEach(m => el.appendChild(renderMessage(m)));
+  } catch (e) {
+    console.error(e);
+    el.innerHTML = '<div class="small">加载留言失败</div>';
+  }
+}
+
+function renderMessage(m) {
+  const div = document.createElement('div'); div.className='msg';
+  const avatar = m.qq_avatar || '/assets/default-avatar.png';
+  const name = m.qq_name || m.display_name || (m.email? m.email.split('@')[0] : '匿名');
+  const qqpart = m.qq_id ? `<span class="qqsmall">@${m.qq_id}</span>` : '';
+  const time = new Date(m.created_at).toLocaleString();
+  const ip = m.ip_location ? `<span>${m.ip_location}</span>` : '';
+  const device = m.device ? `<span>${esc(m.device)}</span>` : '';
+  const network = m.network ? `<span>${esc(m.network)}</span>` : '';
+  div.innerHTML = `
+    <img src="${avatar}" class="avatar" onerror="this.src='/assets/default-avatar.png'"/>
+    <div style="flex:1">
+      <div style="display:flex;align-items:center;gap:8px"><div class="name">${esc(name)}</div>${qqpart}<div style="flex:1"></div><div style="font-size:12px;color:#9aa">${time}</div></div>
+      <div style="margin-top:8px">${esc(m.content)}</div>
+      <div class="meta">${ip} ${ip && (device || network) ? ' · ' : ''} ${device} ${device && network ? ' · ' : ''} ${network}</div>
+      <div class="actions" style="margin-top:10px">
+        <button class="muted" data-id="${m.id}" onclick="openReplyBox('${m.id}')">回复</button>
+        ${ (CURRENT_USER_ID && m.user_id === CURRENT_USER_ID) ? `<button class="muted" onclick="undoMessage('${m.id}')">撤回</button>` : '' }
+      </div>
+      <div class="reply-box" id="replies-${m.id}"></div>
+    </div>
+  `;
+  return div;
+}
+
+/* reply box opens inline and binds textarea -> submitReply sends parent_id */
+function openReplyBox(id) {
+  const container = document.getElementById('replies-'+id);
+  if (!container) return;
+  if (container.querySelector('textarea')) return;
+  container.innerHTML = `
+    <textarea id="reply-to-${id}" style="width:100%;min-height:60px;margin-top:8px;padding:8px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.04)"></textarea>
+    <div style="margin-top:8px;display:flex;gap:8px"><button class="btn" onclick="submitReply('${id}')">发布回复</button><button class="muted" onclick="cancelReply('${id}')">取消</button></div>
+  `;
+}
+function cancelReply(id) { const c = document.getElementById('replies-'+id); if (c) c.innerHTML=''; }
+
+async function submitReply(parentId) {
+  const ta = document.getElementById('reply-to-'+parentId);
+  if (!ta) return;
+  const content = ta.value.trim();
+  if (!content) return alert('请输入内容');
+  // include device/network info
+  const device = detectDeviceModel();
+  const network = detectNetwork().label;
+  const res = await api('messages', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ content, parent_id: parentId, device_model: device, network })});
+  if (!res.ok) { const j = await res.json().catch(()=>({error:'发布失败'})); return alert(j.error || '发布失败'); }
+  await loadMessages();
+}
+
+async function postMessage() {
+  const content = document.getElementById('content').value.trim();
+  if (!content) return alert('请输入内容');
+  const device = detectDeviceModel();
+  const network = detectNetwork().label;
+  const res = await api('messages', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ content, device_model: device, network })});
+  if (res.status === 401) { alert('请先登录或启用游客模式'); location.href='/login.html'; return; }
+  if (!res.ok) { const j=await res.json().catch(()=>({error:'发布失败'})); alert(j.error||'发布失败'); return; }
+  document.getElementById('content').value='';
+  await loadMessages();
+}
+
+async function undoMessage(id) {
+  if (!confirm('确定撤回该留言？')) return;
+  const res = await fetch(`/api/v1/messages?action=undo&id=${encodeURIComponent(id)}`, { method:'PUT', credentials:'include' });
+  if (!res.ok) return alert('撤回失败');
+  await loadMessages();
+}
+
+/* guest create */
+document.getElementById('guestBtn').addEventListener('click', async ()=>{
+  const r = await api('guest-create', { method:'POST' });
+  if (!r.ok) return alert('游客创建失败');
+  alert('游客模式已启用，今天最多可发 5 条');
+  location.href = '/';
+});
+
+/* refresh/post handlers */
+document.getElementById('postBtn').addEventListener('click', postMessage);
+document.getElementById('refreshBtn').addEventListener('click', loadMessages);
+
+/* initial load */
+(async ()=>{
+  // read README/CHANGELOG text and show in aside
+  const readme = `
+  更新日志：
+  - 修复回复不会作为新贴的问题，回复将成为 parent_id 下的回复。
+  - 新增游客模式（限每日 5 条）。
+  - 个人页可重新绑定 QQ，解绑后会显示绑定按钮。
+  - 发帖会尝试保存设备型号与网络类型（前端检测）。
+  - 登录/注册成功会显示内置 modal 和渐变进度条。
+  `;
+  document.getElementById('readmeBox').textContent = readme;
+  await checkAuth();
+  await loadMessages();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>后台管理</title>
+<style>
+  body{font-family:Inter,Arial;background:linear-gradient(180deg,#071026,#001021);color:#e6eef6;margin:0;padding:24px}
+  .wrap{max-width:1200px;margin:0 auto}
+  .card{background:rgba(255,255,255,0.02);padding:18px;border-radius:12px}
+  table{width:100%;border-collapse:collapse;margin-top:8px}
+  th,td{padding:10px;border-bottom:1px solid rgba(255,255,255,0.03);text-align:left}
+  .btn{background:linear-gradient(90deg,#06b6d4,#8b5cf6);color:#022;padding:6px 10px;border-radius:8px;border:none;cursor:pointer}
+  input{padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+  .row{display:flex;gap:8px;align-items:center;margin-top:8px}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h2>后台管理</h2>
+    <div class="card">
+      <div class="row">
+        <input id="lookup" placeholder="用邮箱或 QQ 查找用户（示例: foo@bar.com 或 123456）" style="flex:1"/>
+        <button id="searchBtn" class="btn">查找</button>
+      </div>
+      <div id="usersBox"></div>
+    </div>
+  </div>
+
+<script>
+async function api(path, opts={}) { return fetch('/api/v1/' + path, Object.assign({ credentials:'include' }, opts)); }
+
+async function loadUsers() {
+  const res = await api('admin/users', { method:'GET' });
+  if (!res.ok) { alert('只有管理员能访问'); location.href='/'; return; }
+  const data = await res.json(); renderTable(data);
+}
+
+function renderTable(data) {
+  const box = document.getElementById('usersBox'); box.innerHTML = '';
+  const table = document.createElement('table');
+  table.innerHTML = `<tr><th>邮箱</th><th>QQ</th><th>角色</th><th>封禁</th><th>操作</th></tr>`;
+  data.forEach(u=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${u.email}</td><td>${u.qq_id || ''} ${u.qq_name? ' / '+u.qq_name : ''}</td><td>${u.role}</td><td>${u.is_banned? '是':'否'}</td><td>
+      <button class="btn" onclick="ban('${u.id}')">封禁</button>
+      <button class="btn" onclick="unban('${u.id}')">解封</button>
+      <button class="btn" onclick="setAdmin('${u.id}', true)">设管理员</button>
+      <button class="btn" onclick="setAdmin('${u.id}', false)">取消管理员</button>
+    </td>`;
+    table.appendChild(tr);
+  });
+  box.appendChild(table);
+}
+
+async function ban(id) { await api('admin/users', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'ban', user_id: id })}); loadUsers(); }
+async function unban(id) { await api('admin/users', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'unban', user_id: id })}); loadUsers(); }
+async function setAdmin(id, make) { await api('admin/users', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'set-admin', user_id: id, make_admin: make })}); loadUsers(); }
+
+document.getElementById('searchBtn').addEventListener('click', async ()=>{
+  const q = document.getElementById('lookup').value.trim();
+  if (!q) return loadUsers();
+  // decide email or qq
+  if (q.indexOf('@') !== -1) {
+    // lookup by email
+    const res = await api('admin/users', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'set-admin', lookup_email: q, make_admin: false })});
+    // using admin endpoint to find user then reload list
+    loadUsers();
+  } else {
+    const res = await api('admin/users', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'set-admin', lookup_qq: q, make_admin: false })});
+    loadUsers();
+  }
+});
+
+loadUsers();
+</script>
+</body>
+</html>

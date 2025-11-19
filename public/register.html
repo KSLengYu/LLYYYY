@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>注册</title>
+<style>
+  body{font-family:Arial;background:linear-gradient(180deg,#071026,#001021);color:#e6eef6;margin:0;padding:30px}
+  .wrap{max-width:640px;margin:0 auto}
+  .card{background:rgba(255,255,255,0.02);padding:20px;border-radius:12px}
+  input{width:100%;padding:10px;margin-bottom:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+  .btn{background:linear-gradient(90deg,#06b6d4,#8b5cf6);color:#022;padding:10px 14px;border-radius:8px;border:none;cursor:pointer}
+  .small{color:#9ca3af}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h2>注册</h2>
+      <input id="regEmail" placeholder="邮箱" />
+      <input id="regQQ" placeholder="绑定 QQ（可选）" />
+      <input id="regPwd" type="password" placeholder="密码（仅英文和数字，至少 6 位）" />
+      <input id="regName" placeholder="显示名称（可选）" />
+      <div style="display:flex;gap:8px">
+        <button id="sendRegOtpBtn" class="btn">发送邮箱验证码</button>
+        <button id="completeRegBtn" class="btn" style="background:#0ea5a4">完成注册</button>
+      </div>
+      <p class="small">如果留空 QQ，可在个人主页后续绑定。显示名称留空将使用 QQ 名或邮箱前缀。</p>
+    </div>
+  </div>
+
+<script>
+async function api(path, opts={}) { return fetch('/api/v1/' + path, Object.assign({ credentials:'include' }, opts)); }
+
+document.getElementById('sendRegOtpBtn').addEventListener('click', async ()=>{
+  const email = document.getElementById('regEmail').value.trim(); if (!email) return alert('请输入邮箱');
+  const res = await api('send-otp', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ email })});
+  if (!res.ok) return alert('发送验证码失败'); alert('验证码已发送，请查看邮箱');
+});
+
+document.getElementById('completeRegBtn').addEventListener('click', async ()=>{
+  const email = document.getElementById('regEmail').value.trim();
+  const qq = document.getElementById('regQQ').value.trim();
+  const pwd = document.getElementById('regPwd').value;
+  const name = document.getElementById('regName').value.trim();
+  if (!email || !pwd) return alert('邮箱和密码必填');
+  if (!/^[A-Za-z0-9]{6,}$/.test(pwd)) return alert('密码需至少6位且仅包含英文和数字');
+  const otp = prompt('输入你邮箱收到的验证码');
+  if (!otp) return;
+  const v = await api('verify-otp', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ email, otp })});
+  if (!v.ok) return alert('验证码验证失败');
+  const sp = await api('set-password', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ oldPassword:'', newPassword: pwd })});
+  if (!sp.ok) return alert('设置密码失败');
+  if (qq) await api('bind-qq', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ qq })});
+  if (name) await api('update-profile', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ display_name: name })});
+  alert('注册完成'); location.href = '/';
+});
+</script>
+</body>
+</html>
